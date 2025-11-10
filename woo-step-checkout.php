@@ -1,12 +1,32 @@
-
 <?php
-/*
-Plugin Name: Woo Step Checkout
-Description: Woo Step Checkout
-Version: 1.2.0
-Author: AydenZeng (aydenzeng@gmail.com)
-Text Domain: woo-step-checkout
-*/
+
+/**
+ * Astra child  Theme functions and definitions
+ *
+ * @link https://developer.wordpress.org/themes/basics/theme-functions/
+ *
+ * @package Astra child 
+ * @since 1.0.0
+ */
+
+/**
+ * Define Constants
+ */
+define('CHILD_THEME_ASTRA_CHILD_VERSION', '1.0.0');
+
+/**
+ * Enqueue styles
+ */
+function child_enqueue_styles()
+{
+
+    wp_enqueue_style('astra-child-theme-css', get_stylesheet_directory_uri() . '/style.css', array('astra-theme-css'), CHILD_THEME_ASTRA_CHILD_VERSION, 'all');
+}
+
+add_action('wp_enqueue_scripts', 'child_enqueue_styles', 15);
+
+
+
 //sample checkout page 
 // 保存 Material Series
 add_filter('woocommerce_add_cart_item_data', function ($cart_item_data, $product_id) {
@@ -34,6 +54,32 @@ add_filter('woocommerce_get_item_data', function ($item_data, $cart_item) {
     }
     return $item_data;
 }, 10, 2);
+
+
+/**處理訂單相關 */
+// 保存 Material Series 到訂單項目中
+add_action('woocommerce_checkout_create_order_line_item', 'save_series_to_order_item', 10, 4);
+function save_series_to_order_item($item, $cart_item_key, $cart_item, $order) {
+    // 从购物车数据中获取 Material Series
+    if (isset($cart_item['series_meta'])) {
+        $series_value = $cart_item['series_meta'];
+        // 如果是数组，转换为逗号分隔的字符串（与购物车显示保持一致）
+        if (is_array($series_value)) {
+            $series_value = implode(', ', $series_value);
+        }
+        // 添加到订单项目元数据（键名与购物车显示一致，确保显示统一）
+        $item->add_meta_data('Material Series', $series_value, true);
+    }
+}
+
+// 确保元数据在订单页面正确显示（可选，WooCommerce 通常会自动显示非下划线开头的元数据）
+add_filter('woocommerce_order_item_display_meta_key', 'display_series_meta_key', 10, 3);
+function display_series_meta_key($display_key, $meta, $order_item) {
+    if ($meta->key === 'Material Series') {
+        return 'Material Series'; // 强制显示的标签名
+    }
+    return $display_key;
+}
 
 //AJAX 接口获取购物车价格明细
 // 返回 WooCommerce 购物车价格明细
@@ -153,7 +199,7 @@ function _render_step1_choose_pack($product_id, $data)
     $variations = $data['variations'] ?? [];
     $pack_options = $data['pack_options'] ?? [];
     ob_start();
-?>
+    ?>
     <style>
         <?php echo output_color_css(); ?>.choose-pack-page .section-title {
             font-size: 30px;
@@ -348,7 +394,7 @@ function _render_step3_review_comfirm()
 function _render_step2_shipping_info()
 {
     // 先检查WooCommerce是否加载
-    if ( !class_exists('WC_Countries') || !WC()->countries ) {
+    if (!class_exists('WC_Countries') || !WC()->countries) {
         return '<p>Shipping information requires WooCommerce to be active.</p>';
     }
     // 获取当前用户信息（登录用户自动填充）
@@ -693,6 +739,21 @@ add_shortcode('sample_pack_checkout_process', function ($atts) {
 <?php
     return ob_get_clean();
 });
+/**
+ * 指定产品ID的详情页自动跳转到 samples-get 页面
+ */
+add_action('template_redirect', 'redirect_specific_product_to_sample_page');
+function redirect_specific_product_to_sample_page() {
+    // 1. 填写需要跳转的产品ID（多个ID用逗号分隔，例如 [123, 456, 789]）
+    $target_product_ids = [3178]; // 替换为你的目标产品ID！
+    
+    // 2. 验证当前页面是否为产品详情页，且产品ID在指定列表中
+    if (is_product() && in_array(get_the_ID(), $target_product_ids)) {
+        // 3. 跳转到目标页面（302临时跳转，如需永久跳转可改为 301）
+        wp_redirect('https://antnewmaterials.com/samples-get/', 302);
+        exit; // 必须加 exit 确保跳转生效
+    }
+}
 // Sample Pack Checkout Shortcode
 add_shortcode('sample_pack_checkout_choose_pack', function ($atts) {
     if (!class_exists('WC_Product_Variable')) return 'WooCommerce is required.';
@@ -1098,7 +1159,6 @@ add_shortcode('sample_pack_checkout_choose_pack', function ($atts) {
 
                 // ✅ 收集账单信息
                 const billData = {
-                    payment_method: $('select[name="payment_method"]').val(), // 支付方式必须是启用的 key
                     billing_first_name: $('input[name="billing_first_name"]').val() || 'N/A',
                     billing_last_name: $('input[name="billing_last_name"]').val() || 'N/A',
                     billing_email: $('input[name="billing_email"]').val() || 'no-reply@example.com',
@@ -1117,7 +1177,7 @@ add_shortcode('sample_pack_checkout_choose_pack', function ($atts) {
                 };
 
                 // ✅ 序列化其他表单字段（如 product_id, variation_id, addon 等）
-                const formData = $(this).serializeArray();
+                const formData = $("#confirm-order-form").serializeArray();
 
                 // 合并数据，避免重复字段覆盖
                 const allData = {};
@@ -1128,7 +1188,7 @@ add_shortcode('sample_pack_checkout_choose_pack', function ($atts) {
                     ...allData,
                     ...billData
                 };
-
+                console.log("formdata", allData, "billData", billData, "postData2", postData);
                 $.post('/?wc-ajax=checkout', postData, function(res) {
                     if (res.result === 'success') {
                         window.location.href = res.redirect;
